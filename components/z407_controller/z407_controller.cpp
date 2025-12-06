@@ -5,8 +5,6 @@
 namespace esphome {
 namespace z407_controller {
 
-static const char *const TAG = "z407_controller";
-
 void Z407Controller::setup() {
   ESP_LOGCONFIG(TAG, "Setting up Z407 Controller...");
   
@@ -25,28 +23,12 @@ void Z407Controller::setup() {
 }
 
 void Z407Controller::loop() {
-  // Handle reconnection attempts
-  if (this->auto_reconnect_ && 
-      this->state_ == Z407State::DISCONNECTED &&
-      this->reconnect_attempts_ < MAX_RECONNECT_ATTEMPTS) {
-    uint32_t now = millis();
-    if (now - this->reconnect_attempt_time_ > this->reconnect_delay_) {
-      this->attempt_reconnect_();
-    }
-  }
-  
   // Check for connection timeout during handshake
   if (this->state_ == Z407State::HANDSHAKING) {
     uint32_t now = millis();
     if (now - this->connection_start_time_ > this->connection_timeout_) {
-      ESP_LOGW(TAG, "Handshake timeout - disconnecting");
+      ESP_LOGW(TAG, "Handshake timeout");
       this->set_state_(Z407State::ERROR);
-      if (this->client_ && this->client_->get_connection_state() == 
-          esp32_ble_tracker::ClientState::ESTABLISHED) {
-        // Disconnect will trigger reconnect if auto_reconnect is enabled
-        this->parent()->set_enabled(false);
-        this->parent()->set_enabled(true);
-      }
     }
   }
 }
@@ -79,11 +61,9 @@ void Z407Controller::gattc_event_handler(esp_gattc_cb_event_t event,
         ESP_LOGI(TAG, "BLE connection established");
         this->set_state_(Z407State::CONNECTING);
         this->connection_start_time_ = millis();
-        this->reconnect_attempts_ = 0;  // Reset reconnect counter on successful connection
       } else {
         ESP_LOGW(TAG, "BLE connection failed, status=%d", param->open.status);
         this->set_state_(Z407State::ERROR);
-        this->schedule_reconnect_();
       }
       break;
     }
@@ -92,26 +72,51 @@ void Z407Controller::gattc_event_handler(esp_gattc_cb_event_t event,
       ESP_LOGW(TAG, "BLE disconnected");
       this->handshake_step1_complete_ = false;
       this->handshake_step2_complete_ = false;
+      this->command_handle_ = 0;
+      this->response_handle_ = 0;
       this->set_state_(Z407State::DISCONNECTED);
       this->set_input_(Z407Input::UNKNOWN);
-      this->schedule_reconnect_();
       break;
     }
     
     case ESP_GATTC_SEARCH_CMPL_EVT: {
       ESP_LOGD(TAG, "Service discovery complete");
-      // Start handshake after service discovery
+      // Find our characteristics by UUID
       this->start_handshake_();
+      break;
+    }
+    
+    case ESP_GATTC_REG_FOR_NOTIFY_EVT: {
+      ESP_LOGI(TAG, "Registered for notifications (status=%d)", param->reg_for_notify.status);
+      // Send handshake initiate after registering for notifications
+      if (this->state_ == Z407State::HANDSHAKING) {
+        ESP_LOGI(TAG, "Sending handshake initiate (0x8405)");
+        this->send_raw_command_(0x84, 0x05);
+      } else {
+        ESP_LOGW(TAG, "Not in HANDSHAKING state, current state: %s", z407_state_to_string(this->state_));
+      }
       break;
     }
     
     case ESP_GATTC_NOTIFY_EVT: {
       // Handle notifications from response characteristic
+      if (param->notify.handle != this->response_handle_) {
+        return;
+      }
+      
       std::vector<uint8_t> data(param->notify.value, 
                                param->notify.value + param->notify.value_len);
       
-      ESP_LOGD(TAG, "Received notification: %s", 
-               format_hex_pretty(data.data(), data.size()).c_str());
+      if (data.size() < 3) {
+        if (data.size() == 2) {
+          ESP_LOGD(TAG, "Short notification (2 bytes): %02X %02X", data[0], data[1]);
+        } else {
+          ESP_LOGW(TAG, "Short notification len=%d", (int)data.size());
+        }
+        return;
+      }
+      
+      ESP_LOGD(TAG, "Received notification: %02X %02X %02X", data[0], data[1], data[2]);
       
       if (this->state_ == Z407State::HANDSHAKING) {
         this->handle_handshake_response_(data);
@@ -141,18 +146,40 @@ void Z407Controller::start_handshake_() {
   this->handshake_step1_complete_ = false;
   this->handshake_step2_complete_ = false;
   
-  // Enable notifications on response characteristic
-  auto *chr = this->parent()->get_characteristic(SERVICE_UUID, RESPONSE_UUID);
-  if (chr == nullptr) {
+  // Find characteristics by iterating through services
+  auto *service = this->parent()->get_service(esp32_ble::ESPBTUUID::from_raw(SERVICE_UUID));
+  if (service == nullptr) {
+    ESP_LOGE(TAG, "Service not found!");
+    this->set_state_(Z407State::ERROR);
+    return;
+  }
+  
+  auto *response_chr = service->get_characteristic(esp32_ble::ESPBTUUID::from_raw(RESPONSE_UUID));
+  if (response_chr == nullptr) {
     ESP_LOGE(TAG, "Response characteristic not found!");
     this->set_state_(Z407State::ERROR);
     return;
   }
   
+  auto *command_chr = service->get_characteristic(esp32_ble::ESPBTUUID::from_raw(COMMAND_UUID));
+  if (command_chr == nullptr) {
+    ESP_LOGE(TAG, "Command characteristic not found!");
+    this->set_state_(Z407State::ERROR);
+    return;
+  }
+  
+  // Store handles for later use
+  this->response_handle_ = response_chr->handle;
+  this->command_handle_ = command_chr->handle;
+  
+  ESP_LOGI(TAG, "Found characteristics - Response: 0x%04X, Command: 0x%04X", 
+           this->response_handle_, this->command_handle_);
+  
+  // Enable notifications on response characteristic
   auto status = esp_ble_gattc_register_for_notify(
       this->parent()->get_gattc_if(),
       this->parent()->get_remote_bda(),
-      chr->handle);
+      response_chr->handle);
       
   if (status != ESP_OK) {
     ESP_LOGE(TAG, "Failed to register for notifications: %d", status);
@@ -160,16 +187,12 @@ void Z407Controller::start_handshake_() {
     return;
   }
   
-  // Send first handshake command: 0x8405
-  ESP_LOGD(TAG, "Sending handshake initiate (0x8405)");
-  this->send_raw_command_(0x84, 0x05);
+  ESP_LOGI(TAG, "Registered for notifications, waiting for callback...");
 }
 
 void Z407Controller::handle_handshake_response_(const std::vector<uint8_t> &data) {
-  if (data.size() < 3) {
-    ESP_LOGW(TAG, "Handshake response too short: %d bytes", data.size());
-    return;
-  }
+  ESP_LOGD(TAG, "Handshake response: %02X %02X %02X (step1=%d, step2=%d)", 
+           data[0], data[1], data[2], this->handshake_step1_complete_, this->handshake_step2_complete_);
   
   // Check for 0xD4 0x05 0x01 (response to initiate)
   if (data[0] == 0xD4 && data[1] == 0x05 && data[2] == 0x01) {
@@ -185,6 +208,8 @@ void Z407Controller::handle_handshake_response_(const std::vector<uint8_t> &data
   // Check for 0xD4 0x00 0x03 (connection established)
   else if (data[0] == 0xD4 && data[1] == 0x00 && data[2] == 0x03) {
     ESP_LOGI(TAG, "Handshake complete - connection established!");
+    // Mark step 2 as complete if we skip directly to connection established
+    this->handshake_step2_complete_ = true;
     this->set_state_(Z407State::CONNECTED);
   }
   else {
@@ -248,7 +273,9 @@ bool Z407Controller::send_command(Z407Command cmd) {
   uint8_t lo = command & 0xFF;
   
   if (!this->can_send_command_()) {
-    ESP_LOGW(TAG, "Cannot send command 0x%04X - not ready", command);
+    ESP_LOGW(TAG, "Cannot send command 0x%04X - not ready (state=%s, handle=0x%04X, hs1=%d, hs2=%d)", 
+             command, z407_state_to_string(this->state_), this->command_handle_,
+             this->handshake_step1_complete_, this->handshake_step2_complete_);
     return false;
   }
   
@@ -276,8 +303,8 @@ bool Z407Controller::set_input(Z407Input input) {
 }
 
 bool Z407Controller::send_raw_command_(uint8_t hi, uint8_t lo) {
-  if (this->client_ == nullptr) {
-    ESP_LOGW(TAG, "BLE client not set");
+  if (this->command_handle_ == 0) {
+    ESP_LOGW(TAG, "Command characteristic not initialized");
     return false;
   }
   
@@ -288,17 +315,13 @@ bool Z407Controller::send_raw_command_(uint8_t hi, uint8_t lo) {
     delay(COMMAND_DELAY_MS - (now - this->last_command_time_));
   }
   
-  auto *chr = this->parent()->get_characteristic(SERVICE_UUID, COMMAND_UUID);
-  if (chr == nullptr) {
-    ESP_LOGE(TAG, "Command characteristic not found");
-    return false;
-  }
-  
   std::vector<uint8_t> data{hi, lo};
+  ESP_LOGD(TAG, "Write command %02X %02X to handle 0x%04X", hi, lo, this->command_handle_);
+  
   auto status = esp_ble_gattc_write_char(
       this->parent()->get_gattc_if(),
       this->parent()->get_conn_id(),
-      chr->handle,
+      this->command_handle_,
       data.size(),
       data.data(),
       ESP_GATT_WRITE_TYPE_NO_RSP,
@@ -317,11 +340,10 @@ bool Z407Controller::can_send_command_() const {
   if (this->state_ != Z407State::CONNECTED) {
     return false;
   }
-  if (this->client_ == nullptr) {
+  if (this->command_handle_ == 0) {
     return false;
   }
-  if (this->client_->get_connection_state() != 
-      esp32_ble_tracker::ClientState::ESTABLISHED) {
+  if (!this->handshake_step1_complete_ || !this->handshake_step2_complete_) {
     return false;
   }
   return true;
@@ -348,35 +370,13 @@ void Z407Controller::set_input_(Z407Input input) {
 }
 
 void Z407Controller::schedule_reconnect_() {
-  if (!this->auto_reconnect_) {
-    ESP_LOGD(TAG, "Auto-reconnect disabled");
-    return;
-  }
-  
-  if (this->reconnect_attempts_ >= MAX_RECONNECT_ATTEMPTS) {
-    ESP_LOGW(TAG, "Max reconnect attempts reached (%d)", MAX_RECONNECT_ATTEMPTS);
-    return;
-  }
-  
-  this->reconnect_attempt_time_ = millis();
-  this->reconnect_attempts_++;
-  
-  // Exponential backoff
-  this->reconnect_delay_ = 5000 * (1 << std::min(this->reconnect_attempts_, (uint8_t)4));
-  
-  ESP_LOGI(TAG, "Will attempt reconnect in %u ms (attempt %d/%d)",
-           this->reconnect_delay_, this->reconnect_attempts_, MAX_RECONNECT_ATTEMPTS);
+  // BLE client handles auto-reconnect automatically
+  ESP_LOGD(TAG, "Reconnect will be handled by BLE client auto-reconnect");
 }
 
 void Z407Controller::attempt_reconnect_() {
-  ESP_LOGI(TAG, "Attempting to reconnect...");
-  
-  if (this->client_ && this->client_->get_connection_state() == 
-      esp32_ble_tracker::ClientState::IDLE) {
-    this->parent()->set_enabled(true);
-  }
-  
-  this->reconnect_attempt_time_ = millis();
+  // No longer needed - BLE client handles reconnection
+  ESP_LOGD(TAG, "Reconnect is handled by BLE client");
 }
 
 void Z407Controller::start_discovery_() {
@@ -424,4 +424,3 @@ const char *z407_state_to_string(Z407State state) {
 
 }  // namespace z407_controller
 }  // namespace esphome
-

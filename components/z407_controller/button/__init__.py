@@ -127,5 +127,7 @@ async def to_code(config):
             await cg.register_component(btn, conf)
             
             cg.add(btn.set_parent(parent))
-            cg.add(btn.set_command(cmd_info["value"]))
+            # Cast integer to Z407Command enum
+            cg.add(btn.set_command(cg.RawExpression(f"static_cast<esphome::z407_controller::Z407Command>({cmd_info['value']})")))
+
 

@@ -67,7 +67,7 @@ class Z407Select : public select::Select, public Component {
   
   void update_from_parent_(Z407Input input) {
     std::string value = z407_input_to_string(input);
-    if (this->state != value) {
+    if (this->current_option() != value) {
       this->publish_state(value);
     }
   }

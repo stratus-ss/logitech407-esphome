@@ -3,6 +3,7 @@
 #include "esphome/core/component.h"
 #include "esphome/core/log.h"
 #include "esphome/components/ble_client/ble_client.h"
+#include "esphome/components/esp32_ble/ble_uuid.h"
 #include <vector>
 #include <string>
 

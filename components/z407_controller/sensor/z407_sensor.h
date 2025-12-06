@@ -41,13 +41,9 @@ class Z407Sensor : public sensor::Sensor, public Component {
 
  protected:
   void update_rssi_() {
-    // Get RSSI from BLE client
-    if (this->parent_->parent() != nullptr) {
-      int rssi = this->parent_->parent()->get_rssi();
-      if (rssi != 0) {
-        this->publish_state(rssi);
-      }
-    }
+    // TODO: RSSI access method not available in current ESPHome BLE client API
+    // This feature is temporarily disabled until a compatible method is found
+    ESP_LOGD("z407_sensor", "RSSI update requested but not implemented yet");
   }
   
   Z407Controller *parent_{nullptr};
