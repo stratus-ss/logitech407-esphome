@@ -1,0 +1,106 @@
+# Basic Z407 Controller Configuration
+# This example shows the minimal configuration needed to control Z407 speakers
+
+external_components:
+  - source: github://stratus-ss/logitech407-esphome
+    components: [z407_controller]
+
+substitutions:
+  device_name: z407-controller
+  friendly_name: "Z407 Speakers"
+  # Replace with your Z407's MAC address (use discovery mode first if unknown)
+  z407_mac: "AA:BB:CC:DD:EE:FF"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf  # Required for stable BLE
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  # Enable fallback hotspot
+  ap:
+    ssid: "${device_name} Fallback"
+    password: !secret ap_password
+
+# Enable BLE tracking
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+
+# Configure BLE client for Z407
+ble_client:
+  - mac_address: ${z407_mac}
+    id: z407_ble_client
+    auto_connect: true
+
+# Z407 Controller component
+z407_controller:
+  id: z407
+  ble_client_id: z407_ble_client
+  auto_reconnect: true
+  connection_timeout: 30s
+
+# Volume control buttons
+button:
+  - platform: z407_controller
+    z407_controller_id: z407
+    volume_up:
+      name: "Volume Up"
+    volume_down:
+      name: "Volume Down"
+    bass_up:
+      name: "Bass Up"
+    bass_down:
+      name: "Bass Down"
+
+# Playback control buttons
+  - platform: z407_controller
+    z407_controller_id: z407
+    play_pause:
+      name: "Play/Pause"
+    next_track:
+      name: "Next Track"
+    previous_track:
+      name: "Previous Track"
+
+# Input source selector
+select:
+  - platform: z407_controller
+    z407_controller_id: z407
+    input_source:
+      name: "Input Source"
+
+# Connection status
+binary_sensor:
+  - platform: z407_controller
+    z407_controller_id: z407
+    connection:
+      name: "Connected"
+
+# Signal strength
+sensor:
+  - platform: z407_controller
+    z407_controller_id: z407
+    rssi:
+      name: "Signal Strength"
+      update_interval: 60s
+

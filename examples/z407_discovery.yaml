@@ -1,0 +1,77 @@
+# Z407 Discovery Mode Configuration
+# Use this configuration to discover your Z407's MAC address
+# 
+# IMPORTANT: Before running this:
+# 1. Remove batteries from the physical Z407 remote (or ensure it's disconnected)
+# 2. Make sure no other device is connected to the Z407
+# 3. The Z407 should be in pairing mode (advertising)
+
+external_components:
+  - source: github://stratus-ss/logitech407-esphome
+    components: [z407_controller]
+
+substitutions:
+  device_name: z407-discovery
+  friendly_name: "Z407 Discovery"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# Enable logging to see discovery results
+logger:
+  level: DEBUG
+  logs:
+    z407_controller: DEBUG
+    esp32_ble_tracker: DEBUG
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  
+  ap:
+    ssid: "${device_name} Fallback"
+    password: !secret ap_password
+
+# Enable BLE tracking with active scanning
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 320ms
+    window: 30ms
+
+# Z407 Controller in discovery mode
+z407_controller:
+  id: z407
+  discovery_mode: true
+  discovery_duration: 30s
+
+# Text sensor to display discovered MAC address
+text_sensor:
+  - platform: z407_controller
+    z407_controller_id: z407
+    discovered_address:
+      name: "Discovered Z407 Address"
+      icon: mdi:bluetooth-audio
+
+# Instructions displayed in Home Assistant
+text_sensor:
+  - platform: template
+    name: "Discovery Instructions"
+    icon: mdi:information-outline
+    lambda: |-
+      return {"1. Remove batteries from Z407 remote\n2. Ensure Z407 is powered on\n3. Wait 30 seconds\n4. Check 'Discovered Z407 Address' sensor"};
+

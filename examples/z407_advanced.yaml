@@ -1,0 +1,197 @@
+# Advanced Z407 Controller Configuration
+# This example shows all available features and customization options
+
+external_components:
+  - source: github://stratus-ss/logitech407-esphome
+    components: [z407_controller]
+
+substitutions:
+  device_name: z407-advanced
+  friendly_name: "Z407 Advanced"
+  z407_mac: "AA:BB:CC:DD:EE:FF"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  comment: "Advanced Z407 speaker controller with all features"
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+  logs:
+    z407_controller: DEBUG
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: true
+  
+  ap:
+    ssid: "${device_name} Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 320ms
+    window: 30ms
+
+ble_client:
+  - mac_address: ${z407_mac}
+    id: z407_ble_client
+    auto_connect: true
+
+# Z407 Controller with all options
+z407_controller:
+  id: z407
+  ble_client_id: z407_ble_client
+  auto_reconnect: true
+  connection_timeout: 30s
+  
+  # Automation triggers
+  on_state:
+    - lambda: |-
+        ESP_LOGI("z407", "State changed to: %d", (int)state);
+  
+  on_input_change:
+    - lambda: |-
+        ESP_LOGI("z407", "Input changed to: %d", (int)input);
+
+# All available buttons
+button:
+  # Volume controls
+  - platform: z407_controller
+    z407_controller_id: z407
+    volume_up:
+      name: "Volume Up"
+      icon: mdi:volume-plus
+    volume_down:
+      name: "Volume Down"
+      icon: mdi:volume-minus
+  
+  # Bass controls
+  - platform: z407_controller
+    z407_controller_id: z407
+    bass_up:
+      name: "Bass Up"
+      icon: mdi:music-clef-bass
+    bass_down:
+      name: "Bass Down"
+      icon: mdi:music-clef-bass
+  
+  # Playback controls
+  - platform: z407_controller
+    z407_controller_id: z407
+    play_pause:
+      name: "Play/Pause"
+      icon: mdi:play-pause
+    next_track:
+      name: "Next Track"
+      icon: mdi:skip-next
+    previous_track:
+      name: "Previous Track"
+      icon: mdi:skip-previous
+  
+  # Input switching (alternative to select)
+  - platform: z407_controller
+    z407_controller_id: z407
+    input_bluetooth:
+      name: "Switch to Bluetooth"
+      icon: mdi:bluetooth
+    input_aux:
+      name: "Switch to AUX"
+      icon: mdi:audio-input-stereo-minijack
+    input_usb:
+      name: "Switch to USB"
+      icon: mdi:usb
+  
+  # System controls
+  - platform: z407_controller
+    z407_controller_id: z407
+    bluetooth_pair:
+      name: "Bluetooth Pairing Mode"
+      icon: mdi:bluetooth-connect
+      entity_category: config
+    factory_reset:
+      name: "Factory Reset"
+      icon: mdi:restore-alert
+      entity_category: config
+  
+  # Sound effects
+  - platform: z407_controller
+    z407_controller_id: z407
+    sound_1:
+      name: "Play Sound 1"
+      icon: mdi:music-note
+      entity_category: diagnostic
+    sound_2:
+      name: "Play Sound 2"
+      icon: mdi:music-note
+      entity_category: diagnostic
+    sound_3:
+      name: "Play Sound 3"
+      icon: mdi:music-note
+      entity_category: diagnostic
+
+# Input source selector
+select:
+  - platform: z407_controller
+    z407_controller_id: z407
+    input_source:
+      name: "Input Source"
+      icon: mdi:audio-input-stereo-minijack
+
+# Connection status
+binary_sensor:
+  - platform: z407_controller
+    z407_controller_id: z407
+    connection:
+      name: "Connected"
+      device_class: connectivity
+
+# Signal strength
+sensor:
+  - platform: z407_controller
+    z407_controller_id: z407
+    rssi:
+      name: "Signal Strength"
+      update_interval: 30s
+      filters:
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 5
+
+# Custom automations
+script:
+  # Quick volume adjustment
+  - id: volume_boost
+    then:
+      - button.press: volume_up
+      - delay: 200ms
+      - button.press: volume_up
+      - delay: 200ms
+      - button.press: volume_up
+  
+  # Switch to Bluetooth and pair
+  - id: bluetooth_setup
+    then:
+      - button.press: input_bluetooth
+      - delay: 1s
+      - button.press: bluetooth_pair
+
+# Home Assistant automations can call these scripts
+# Example: service: esphome.z407_advanced_volume_boost
+
