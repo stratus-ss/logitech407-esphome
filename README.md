@@ -6,6 +6,11 @@ Control your Logitech Z407 Bluetooth speakers from Home Assistant using an ESP32
 
 This custom ESPHome component allows you to control Logitech Z407 speakers via Bluetooth Low Energy (BLE). It provides full control over volume, bass, input selection, and playback functions, integrating seamlessly with Home Assistant.
 
+
+## AI DISCLOSURE
+
+My repo is full of years of python with a smattering of GO. However, I have done precisely zero C++. This was human-in-the-loop with Cursor.AI using Claude Sonnet, but aside from testing, I wrote zero lines of the cpp code.
+
 ### Features
 
 - ✅ **Volume Control** - Increase/decrease master volume
