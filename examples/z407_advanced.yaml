@@ -1,10 +1,6 @@
 # Advanced Z407 Controller Configuration
 # This example shows all available features and customization options
 
-external_components:
-  - source: github://stratus-ss/logitech407-esphome
-    components: [z407_controller]
-
 substitutions:
   device_name: z407-advanced
   friendly_name: "Z407 Advanced"
@@ -30,7 +26,8 @@ api:
     key: !secret api_encryption_key
 
 ota:
-  password: !secret ota_password
+  - platform: esphome
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
@@ -42,6 +39,14 @@ wifi:
     password: !secret ap_password
 
 captive_portal:
+
+# ========================================
+# Z407 Speaker Controller Component
+# ========================================
+external_components:
+  - source: github://stratus-ss/logitech407-esphome
+    components: [z407_controller]
+    refresh: 0s  # Force refresh to get latest changes
 
 esp32_ble_tracker:
   scan_parameters:

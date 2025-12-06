@@ -13,7 +13,6 @@ This custom ESPHome component allows you to control Logitech Z407 speakers via B
 - ✅ **Input Switching** - Switch between Bluetooth, AUX, and USB inputs
 - ✅ **Playback Control** - Play/pause, next/previous track
 - ✅ **Connection Status** - Monitor BLE connection state
-- ✅ **Signal Strength** - View RSSI (signal strength)
 - ✅ **Auto-Reconnect** - Automatically reconnects after disconnection
 - ✅ **Discovery Mode** - Find your Z407's MAC address without external tools
 - ✅ **State Tracking** - Tracks current input source
@@ -215,6 +214,8 @@ sensor:
       update_interval: 60s
 ```
 
+**Note:** RSSI functionality is temporarily disabled pending ESPHome BLE API updates. The sensor will be present but will not report values.
+
 #### Text Sensor
 
 Discovery results (discovery mode only):
@@ -242,9 +243,11 @@ text_sensor:
 3. Send `0x8405` (Pairing Initiate)
 4. Wait for `0xD40501` response
 5. Send `0x8400` (Pairing Acknowledge)
-6. Wait for `0xD40001` response
+6. Wait for `0xD40001` response (optional - may be skipped)
 7. Wait for `0xD40003` (Connected)
 8. Ready for commands
+
+**Note:** The Z407 may skip step 6 and send `0xD40003` directly after `0x8400`. The component handles both sequences.
 
 ### Command Reference
 
@@ -322,6 +325,82 @@ script:
       - button.press: bass_up
 ```
 
+## Troubleshooting
+
+### Commands Not Working ("not ready" errors)
+
+**Symptoms:** Logs show `Cannot send command - not ready`
+
+**Solution:**
+1. Check ESP32 logs for handshake completion:
+   ```
+   [I][z407_controller:123] Handshake complete - connection established!
+   ```
+2. Ensure the physical Z407 remote is unpaired/disconnected
+3. Verify only one device is connected to the Z407 at a time
+4. Try power cycling both the Z407 and ESP32
+5. Enable debug logging to see detailed handshake sequence:
+   ```yaml
+   logger:
+     level: DEBUG
+   ```
+
+### BLE Connection Failures
+
+**Symptoms:** Device won't connect or disconnects frequently
+
+**Solution:**
+1. Move ESP32 closer to Z407 (BLE range is shorter than WiFi)
+2. Reduce WiFi interference:
+   ```yaml
+   wifi:
+     fast_connect: true
+     power_save_mode: none
+   ```
+3. Use ESP-IDF framework (more stable BLE):
+   ```yaml
+   esp32:
+     framework:
+       type: esp-idf
+   ```
+4. Check that Z407 is powered on and not in pairing mode with another device
+
+### Discovery Mode Not Finding Z407
+
+**Symptoms:** No devices discovered in discovery mode
+
+**Solution:**
+1. Ensure Z407 is powered on
+2. Remove batteries from physical Z407 remote
+3. Disconnect any Bluetooth devices connected to Z407
+4. Verify Z407 is advertising (LED should be flashing)
+5. Increase discovery duration:
+   ```yaml
+   z407_controller:
+     discovery_mode: true
+     discovery_duration: 60s
+   ```
+
+### Debug Logging
+
+Enable detailed logging for troubleshooting:
+
+```yaml
+logger:
+  level: DEBUG
+  logs:
+    z407_controller: DEBUG
+    ble_client: DEBUG
+    esp32_ble: DEBUG
+```
+
+This will show:
+- Handshake sequence details
+- Command send/receive status
+- BLE connection state changes
+- Characteristic handles
+- All notifications from Z407
+
 ## Credits
 
 This project is based on the reverse engineering work by [freundTech](https://github.com/freundTech/logi-z407-reverse-engineering). Without their protocol documentation, this component would not exist.
@@ -337,6 +416,14 @@ This project is not affiliated, associated, authorized, endorsed by, or in any w
 
 
 ## Changelog
+
+**Known Issues:**
+- RSSI sensor temporarily disabled pending ESPHome BLE API updates
+
+**Testing:**
+- Verified compilation with ESPHome 2025.11.x
+- Tested handshake sequence with real Z407 hardware
+- Validated command execution and state tracking
 
 ### Version 1.0.0 (Initial Release)
 

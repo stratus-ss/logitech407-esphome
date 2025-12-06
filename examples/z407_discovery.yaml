@@ -3,12 +3,12 @@
 # 
 # IMPORTANT: Before running this:
 # 1. Remove batteries from the physical Z407 remote (or ensure it's disconnected)
-# 2. Make sure no other device is connected to the Z407
-# 3. The Z407 should be in pairing mode (advertising)
-
-external_components:
-  - source: github://stratus-ss/logitech407-esphome
-    components: [z407_controller]
+# 2. Make sure the Z407 speakers are powered on
+# 3. Disconnect any device currently connected to the Z407
+# 
+# AFTER FLASHING:
+# Check the logs for devices advertising service UUID: "0000fdc2-0000-1000-8000-00805f9b34fb"
+# The MAC address will be shown in a formatted box in the logs
 
 substitutions:
   device_name: z407-discovery
@@ -27,51 +27,109 @@ esp32:
 logger:
   level: DEBUG
   logs:
-    z407_controller: DEBUG
-    esp32_ble_tracker: DEBUG
+    esp32_ble_tracker: WARN     # Suppress BLE scan spam
+    ble_scanner: DEBUG          # Show device checks
 
-# Enable Home Assistant API
 api:
   encryption:
     key: !secret api_encryption_key
 
 ota:
-  password: !secret ota_password
+  - platform: esphome
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  fast_connect: true
   
   ap:
     ssid: "${device_name} Fallback"
     password: !secret ap_password
 
-# Enable BLE tracking with active scanning
+captive_portal:
+
+# ========================================
+# BLE SCANNER TO FIND Z407
+# ========================================
 esp32_ble_tracker:
   scan_parameters:
     active: true
     interval: 320ms
     window: 30ms
+    duration: 5min  # Scan continuously for 5 minutes
+  on_scan_end:
+    then:
+      - logger.log: "Scan complete. If Z407 not found, ensure remote batteries are removed and Z407 is powered on."
+  on_ble_advertise:
+    - then:
+        - lambda: |-
+            // Static variables to control periodic reporting
+            static uint32_t last_report_time = 0;
+            static bool z407_ever_found = false;
+            static std::string z407_mac = "";
+            uint32_t now = millis();
+            
+            // Only check for Z407, ignore everything else
+            std::string z407_service_full = "0000fdc2-0000-1000-8000-00805f9b34fb";
+            std::string z407_service_short_lower = "0xfdc2";
+            std::string z407_service_short_upper = "0xFDC2";
+            
+            // Quick check: only process if device advertises services
+            if (x.get_service_uuids().empty()) {
+              return;  // Skip devices with no services
+            }
+            
+            // Check each service UUID for Z407
+            for (auto service_uuid : x.get_service_uuids()) {
+              std::string service_str = service_uuid.to_string();
+              std::string service_str_lower = service_str;
+              
+              // Convert to lowercase for comparison
+              std::transform(service_str_lower.begin(), service_str_lower.end(), 
+                           service_str_lower.begin(), ::tolower);
+              
+              // Check for Z407 service UUID (full form, or short form upper/lower)
+              if (service_str_lower == z407_service_full || 
+                  service_str == z407_service_short_upper ||
+                  service_str_lower == z407_service_short_lower) {
+                
+                // Found Z407! Print ASCII box every 10 seconds (or on first discovery)
+                if (!z407_ever_found || (now - last_report_time) > 10000) {
+                  z407_ever_found = true;
+                  z407_mac = x.address_str();
+                  last_report_time = now;
+                  
+                  ESP_LOGI("Z407_FOUND", "");
+                  ESP_LOGI("Z407_FOUND", "╔════════════════════════════════════════╗");
+                  ESP_LOGI("Z407_FOUND", "║   FOUND LOGITECH Z407 SPEAKERS!       ║");
+                  ESP_LOGI("Z407_FOUND", "╠════════════════════════════════════════╣");
+                  ESP_LOGI("Z407_FOUND", "║ MAC ADDRESS:                           ║");
+                  ESP_LOGI("Z407_FOUND", "║ %-38s ║", z407_mac.c_str());
+                  ESP_LOGI("Z407_FOUND", "╠════════════════════════════════════════╣");
+                  ESP_LOGI("Z407_FOUND", "║ NEXT STEP:                             ║");
+                  ESP_LOGI("Z407_FOUND", "║ 1. Copy the MAC address above          ║");
+                  ESP_LOGI("Z407_FOUND", "║ 2. Use it in z407_basic.yaml           ║");
+                  ESP_LOGI("Z407_FOUND", "║ 3. Update the 'z407_mac' substitution  ║");
+                  ESP_LOGI("Z407_FOUND", "║ 4. Flash that configuration            ║");
+                  ESP_LOGI("Z407_FOUND", "╚════════════════════════════════════════╝");
+                  ESP_LOGI("Z407_FOUND", "");
+                }
+                
+                break;  // Exit loop once found
+              }
+            }
 
-# Z407 Controller in discovery mode
-z407_controller:
-  id: z407
-  discovery_mode: true
-  discovery_duration: 30s
-
-# Text sensor to display discovered MAC address
-text_sensor:
-  - platform: z407_controller
-    z407_controller_id: z407
-    discovered_address:
-      name: "Discovered Z407 Address"
-      icon: mdi:bluetooth-audio
-
-# Instructions displayed in Home Assistant
-text_sensor:
-  - platform: template
-    name: "Discovery Instructions"
-    icon: mdi:information-outline
-    lambda: |-
-      return {"1. Remove batteries from Z407 remote\n2. Ensure Z407 is powered on\n3. Wait 30 seconds\n4. Check 'Discovered Z407 Address' sensor"};
+# ========================================
+# Periodic Status Update
+# ========================================
+# Shows scanner is still working
+interval:
+  - interval: 15s
+    then:
+      - lambda: |-
+          static int scan_count = 0;
+          scan_count++;
+          ESP_LOGI("ble_scanner", "Still scanning... (%d seconds elapsed)", scan_count * 15);
+          ESP_LOGI("ble_scanner", "Waiting for Z407 (service 0xFDC2). Remove remote batteries if not found.");
 

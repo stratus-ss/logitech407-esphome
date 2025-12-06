@@ -1,10 +1,6 @@
 # Basic Z407 Controller Configuration
 # This example shows the minimal configuration needed to control Z407 speakers
 
-external_components:
-  - source: github://stratus-ss/logitech407-esphome
-    components: [z407_controller]
-
 substitutions:
   device_name: z407-controller
   friendly_name: "Z407 Speakers"
@@ -23,6 +19,8 @@ esp32:
 # Enable logging
 logger:
   level: DEBUG
+  logs:
+    z407_controller: DEBUG      # Enable debug logs for Z407
 
 # Enable Home Assistant API
 api:
@@ -30,21 +28,36 @@ api:
     key: !secret api_encryption_key
 
 ota:
-  password: !secret ota_password
+  - platform: esphome
+    password: !secret ota_password
 
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  fast_connect: true
   
   # Enable fallback hotspot
   ap:
     ssid: "${device_name} Fallback"
     password: !secret ap_password
 
-# Enable BLE tracking
+captive_portal:
+
+# ========================================
+# Z407 Speaker Controller Component
+# ========================================
+# Add the Z407 custom component from GitHub
+external_components:
+  - source: github://stratus-ss/logitech407-esphome
+    components: [z407_controller]
+    refresh: 0s  # Force refresh to get latest changes
+
+# BLE tracker for Z407 connection
 esp32_ble_tracker:
   scan_parameters:
     active: true
+    interval: 320ms
+    window: 30ms
 
 # Configure BLE client for Z407
 ble_client:
@@ -59,48 +72,70 @@ z407_controller:
   auto_reconnect: true
   connection_timeout: 30s
 
-# Volume control buttons
+# ========================================
+# Z407 Control Buttons
+# ========================================
 button:
+  # Volume controls
   - platform: z407_controller
     z407_controller_id: z407
     volume_up:
-      name: "Volume Up"
+      name: "Z407 Volume Up"
+      icon: mdi:volume-plus
     volume_down:
-      name: "Volume Down"
+      name: "Z407 Volume Down"
+      icon: mdi:volume-minus
+  
+  # Bass controls
+  - platform: z407_controller
+    z407_controller_id: z407
     bass_up:
-      name: "Bass Up"
+      name: "Z407 Bass Up"
+      icon: mdi:music-clef-bass
     bass_down:
-      name: "Bass Down"
-
-# Playback control buttons
+      name: "Z407 Bass Down"
+      icon: mdi:music-clef-bass
+  
+  # Playback controls
   - platform: z407_controller
     z407_controller_id: z407
     play_pause:
-      name: "Play/Pause"
+      name: "Z407 Play/Pause"
+      icon: mdi:play-pause
     next_track:
-      name: "Next Track"
+      name: "Z407 Next Track"
+      icon: mdi:skip-next
     previous_track:
-      name: "Previous Track"
+      name: "Z407 Previous Track"
+      icon: mdi:skip-previous
 
-# Input source selector
+# ========================================
+# Z407 Input Source Selector
+# ========================================
 select:
   - platform: z407_controller
     z407_controller_id: z407
     input_source:
-      name: "Input Source"
+      name: "Z407 Input Source"
+      icon: mdi:audio-input-stereo-minijack
 
-# Connection status
+# ========================================
+# Z407 Connection Status
+# ========================================
 binary_sensor:
   - platform: z407_controller
     z407_controller_id: z407
     connection:
-      name: "Connected"
+      name: "Z407 Connected"
+      device_class: connectivity
 
-# Signal strength
+# ========================================
+# Z407 Signal Strength Sensor
+# ========================================
 sensor:
   - platform: z407_controller
     z407_controller_id: z407
     rssi:
-      name: "Signal Strength"
+      name: "Z407 Signal Strength"
       update_interval: 60s
 
