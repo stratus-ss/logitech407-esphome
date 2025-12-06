@@ -11,9 +11,12 @@ from esphome.const import (
     CONF_ICON,
     DEVICE_CLASS_EMPTY,
 )
-from .. import z407_controller_ns, Z407Controller, CONF_Z407_CONTROLLER_ID
+from .. import z407_controller_ns, Z407Controller
 
 DEPENDENCIES = ["z407_controller"]
+
+# Add constant for z407_controller_id
+CONF_Z407_CONTROLLER_ID = "z407_controller_id"
 
 # Define button class
 Z407Button = z407_controller_ns.class_("Z407Button", button.Button, cg.Component)
@@ -84,9 +87,6 @@ COMMANDS = {
         "icon": "mdi:music-note",
     },
 }
-
-# Add constant for z407_controller_id
-CONF_Z407_CONTROLLER_ID = "z407_controller_id"
 
 
 def button_schema(command_name):
