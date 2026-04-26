@@ -1,0 +1,204 @@
+esphome:
+  name: bt-temp-gatherer
+
+esp32:
+  framework:
+    type: esp-idf
+  board: nodemcu-32s
+
+# Temporary debug logging to diagnose issue
+logger:
+  level: DEBUG  # Must be DEBUG to allow ble_scanner DEBUG logs
+  logs:
+    esp32_ble_tracker: WARN     # Suppress BLE scan spam
+    ble_scanner: DEBUG          # Show device checks temporarily
+    sensor: INFO                # Reduce sensor spam
+    xiaomi_lywsd03mmc: INFO     # Reduce temp sensor spam
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "NgaeXLBu4+OzWHQavyDBqymbhU8xB9AAO/DN9AVjpdo="
+
+ota:
+  - platform: esphome
+    password: "b2eb2ee6c8f9c31ec74cfc8f572b83dd"
+
+wifi:
+  ssid: "NotFreeIOT"
+  password: "goodlife"
+  fast_connect: true
+  ap:
+    ssid: "Bt-Temp-Gatherer"
+    password: "yayM3Ha9Cb6N"
+  manual_ip: 
+    static_ip: 192.168.66.70
+    gateway: 192.168.66.7
+    subnet: 255.255.255.0
+
+captive_portal:
+
+# ========================================
+# BLE SCANNER TO FIND Z407
+# ========================================
+# BEFORE RUNNING:
+# 1. Remove batteries from Z407 physical remote
+# 2. Ensure Z407 speakers are powered on
+# 3. Disconnect any device from Z407
+#
+# AFTER FLASHING:
+# Check the logs for devices advertising service:
+# "0000fdc2-0000-1000-8000-00805f9b34fb"
+# The MAC address will be shown like: "Found device AA:BB:CC:DD:EE:FF"
+# ========================================
+
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 320ms
+    window: 30ms
+    duration: 5min  # Scan continuously for 5 minutes
+  on_scan_end:
+    then:
+      - logger.log: "Scan complete. If Z407 not found, ensure remote batteries are removed and Z407 is powered on."
+  on_ble_advertise:
+    - then:
+        - lambda: |-
+            // Static variables to control periodic reporting
+            static uint32_t last_report_time = 0;
+            static bool z407_ever_found = false;
+            static std::string z407_mac = "";
+            uint32_t now = millis();
+            
+            // Only check for Z407, ignore everything else
+            std::string z407_service_full = "0000fdc2-0000-1000-8000-00805f9b34fb";
+            std::string z407_service_short_lower = "0xfdc2";
+            std::string z407_service_short_upper = "0xFDC2";
+            
+            // Quick check: only process if device advertises services
+            if (x.get_service_uuids().empty()) {
+              return;  // Skip devices with no services
+            }
+            
+            // Check each service UUID for Z407
+            for (auto service_uuid : x.get_service_uuids()) {
+              std::string service_str = service_uuid.to_string();
+              std::string service_str_lower = service_str;
+              
+              // Convert to lowercase for comparison
+              std::transform(service_str_lower.begin(), service_str_lower.end(), 
+                           service_str_lower.begin(), ::tolower);
+              
+              // Check for Z407 service UUID (full form, or short form upper/lower)
+              if (service_str_lower == z407_service_full || 
+                  service_str == z407_service_short_upper ||
+                  service_str_lower == z407_service_short_lower) {
+                
+                // Found Z407! Print ASCII box every 10 seconds (or on first discovery)
+                if (!z407_ever_found || (now - last_report_time) > 10000) {
+                  z407_ever_found = true;
+                  z407_mac = x.address_str();
+                  last_report_time = now;
+                  
+                  ESP_LOGI("Z407_FOUND", "");
+                  ESP_LOGI("Z407_FOUND", "╔════════════════════════════════════════╗");
+                  ESP_LOGI("Z407_FOUND", "║   FOUND LOGITECH Z407 SPEAKERS!       ║");
+                  ESP_LOGI("Z407_FOUND", "╠════════════════════════════════════════╣");
+                  ESP_LOGI("Z407_FOUND", "║ MAC ADDRESS:                           ║");
+                  ESP_LOGI("Z407_FOUND", "║ %-38s ║", z407_mac.c_str());
+                  ESP_LOGI("Z407_FOUND", "╠════════════════════════════════════════╣");
+                  ESP_LOGI("Z407_FOUND", "║ NEXT STEP:                             ║");
+                  ESP_LOGI("Z407_FOUND", "║ 1. Copy the MAC address above          ║");
+                  ESP_LOGI("Z407_FOUND", "║ 2. Edit bt-temp-gatherer-with-z407.yaml║");
+                  ESP_LOGI("Z407_FOUND", "║ 3. Update the MAC address on line 59   ║");
+                  ESP_LOGI("Z407_FOUND", "║ 4. Flash that configuration            ║");
+                  ESP_LOGI("Z407_FOUND", "╚════════════════════════════════════════╝");
+                  ESP_LOGI("Z407_FOUND", "");
+                }
+                
+                break;  // Exit loop once found
+              }
+            }
+
+# ========================================
+# Temperature Sensors (Still Active)
+# ========================================
+sensor:
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:B3:52:3A"
+    bindkey: "35907c9f370c5f0b9c54c605c7e808a2"
+    temperature:
+      name: "Upstairs Temperature"
+    humidity:
+      name: "Upstairs Humidity"
+    battery_level:
+      name: "Upstairs Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:AD:36:C4"
+    bindkey: "6a4ed09e8bf3ed7d992f5abfb4c7d514"
+    temperature:
+      name: "Kitchen Temperature"
+    humidity:
+      name: "Kitchen Humidity"
+    battery_level:
+      name: "Kitchen Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:72:6F:4A"
+    bindkey: "07107575ab4f45fd855c3d97302b48b2"
+    temperature:
+      name: "School Room Temperature"
+    humidity:
+      name: "School Room Humidity"
+    battery_level:
+      name: "School Room Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:BF:BA:8D"
+    bindkey: "f9dc9179c1d2ebcd397275e5659e8810"
+    temperature:
+      name: "Master Bedroom Temperature"
+    humidity:
+      name: "Master Bedroom Humidity"
+    battery_level:
+      name: "Master Bedroom Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:E4:F3:86"
+    bindkey: "ae0e962315b3880c287272de5dfa754d"
+    temperature:
+      name: "Office Temperature"
+    humidity:
+      name: "Office Humidity"
+    battery_level:
+      name: "Office Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:5A:8D:42"
+    bindkey: "ee514ef0dc83ae76c9e2881734e5dfb1"
+    temperature:
+      name: "Thermostat Temperature"
+    humidity:
+      name: "Thermostat Humidity"
+    battery_level:
+      name: "Thermostat Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:E4:30:14"
+    bindkey: "a73b053b0711c90508ef4e4d65c4146a"
+    temperature:
+      name: "Projector Room Temperature"
+    humidity:
+      name: "Projector Room Humidity"
+    battery_level:
+      name: "Projector Room Battery Level"
+
+switch:
+  - platform: restart
+    name: "Bt Temp Gatherer Restart"
+
+# Periodic update to show scanner is working
+interval:
+  - interval: 15s
+    then:
+      - lambda: |-
+          static int scan_count = 0;
+          scan_count++;
+          ESP_LOGI("ble_scanner", "Still scanning... (%d seconds elapsed)", scan_count * 15);
+          ESP_LOGI("ble_scanner", "Waiting for Z407 (service 0xFDC2). Remove remote batteries if not found.");
+

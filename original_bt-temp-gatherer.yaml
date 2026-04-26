@@ -1,0 +1,108 @@
+esphome:
+  name: bt-temp-gatherer
+  #name: bt-temp-gatherer
+esp32:
+  framework:
+    type: esp-idf
+  board: nodemcu-32s
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "NgaeXLBu4+OzWHQavyDBqymbhU8xB9AAO/DN9AVjpdo="
+
+ota:
+  - platform: esphome
+    password: "b2eb2ee6c8f9c31ec74cfc8f572b83dd"
+
+wifi:
+  ssid: "NotFreeIOT"
+  password: "goodlife"
+  #domain: .stratus.local
+  #use_address: 
+  fast_connect: true
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Bt-Temp-Gatherer"
+    password: "yayM3Ha9Cb6N"
+  manual_ip: 
+    static_ip: 192.168.66.70
+    gateway: 192.168.66.7
+    subnet: 255.255.255.0
+captive_portal:
+
+
+esp32_ble_tracker:
+
+sensor:
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:B3:52:3A"
+    bindkey: "35907c9f370c5f0b9c54c605c7e808a2"
+    temperature:
+      name: "Upstairs Temperature"
+    humidity:
+      name: "Upstairs Humidity"
+    battery_level:
+      name: "Upstairs Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:AD:36:C4"
+    bindkey: "6a4ed09e8bf3ed7d992f5abfb4c7d514"
+    temperature:
+      name: "Kitchen Temperature"
+    humidity:
+      name: "Kitchen Humidity"
+    battery_level:
+      name: "Kitchen Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:72:6F:4A"
+    bindkey: "07107575ab4f45fd855c3d97302b48b2"
+    temperature:
+      name: "School Room Temperature"
+    humidity:
+      name: "School Room Humidity"
+    battery_level:
+      name: "School Room Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:BF:BA:8D"
+    bindkey: "f9dc9179c1d2ebcd397275e5659e8810"
+    temperature:
+      name: "Master Bedroom Temperature"
+    humidity:
+      name: "Master Bedroom Humidity"
+    battery_level:
+      name: "Master Bedroom Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:E4:F3:86"
+    bindkey: "ae0e962315b3880c287272de5dfa754d"
+    temperature:
+      name: "Office Temperature"
+    humidity:
+      name: "Office Humidity"
+    battery_level:
+      name: "Office Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:5A:8D:42"
+    bindkey: "ee514ef0dc83ae76c9e2881734e5dfb1"
+    temperature:
+      name: "Thermostat Temperature"
+    humidity:
+      name: "Thermostat Humidity"
+    battery_level:
+      name: "Thermostat Battery Level"
+  - platform: xiaomi_lywsd03mmc
+    mac_address: "A4:C1:38:E4:30:14"
+    bindkey: "a73b053b0711c90508ef4e4d65c4146a"
+    temperature:
+      name: "Projector Room Temperature"
+    humidity:
+      name: "Projector Room Humidity"
+    battery_level:
+      name: "Projector Room Battery Level"
+
+
+switch:
+  - platform: restart
+    name: "Bt Temp Gatherer Restart"
+

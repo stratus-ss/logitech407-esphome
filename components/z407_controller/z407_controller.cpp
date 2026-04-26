@@ -18,7 +18,7 @@ void Z407Controller::setup() {
       return;
     }
     ESP_LOGCONFIG(TAG, "Normal operation mode - MAC address: %s", 
-                  this->client_->address_str().c_str());
+                  this->client_->address_str());
   }
 }
 
@@ -39,7 +39,7 @@ void Z407Controller::dump_config() {
   ESP_LOGCONFIG(TAG, "  Current Input: %s", z407_input_to_string(this->current_input_));
   ESP_LOGCONFIG(TAG, "  Discovery Mode: %s", YESNO(this->discovery_mode_));
   if (!this->discovery_mode_) {
-    ESP_LOGCONFIG(TAG, "  MAC Address: %s", this->client_->address_str().c_str());
+    ESP_LOGCONFIG(TAG, "  MAC Address: %s", this->client_->address_str());
     ESP_LOGCONFIG(TAG, "  Auto Reconnect: %s", YESNO(this->auto_reconnect_));
     ESP_LOGCONFIG(TAG, "  Connection Timeout: %u ms", this->connection_timeout_);
   } else {

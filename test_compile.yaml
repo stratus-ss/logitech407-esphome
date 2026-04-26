@@ -1,0 +1,33 @@
+esphome:
+  name: z407-test
+  platform: ESP32
+  board: nodemcu-32s
+
+wifi:
+  ssid: "test"
+  password: "test"
+
+logger:
+api:
+ota:
+  - platform: esphome
+
+esp32_ble_tracker:
+
+ble_client:
+  - mac_address: "AA:BB:CC:DD:EE:FF"
+    id: z407_speaker
+
+z407_controller:
+  id: z407_ctrl
+  ble_client_id: z407_speaker
+
+button:
+  - platform: z407_controller
+    z407_controller_id: z407_ctrl
+    name: "Z407 Volume Up"
+    volume_up:
+
+
+
+
