@@ -35,7 +35,7 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
   fast_connect: true
-  
+
   # Enable fallback hotspot
   ap:
     ssid: "${device_name} Fallback"
@@ -85,7 +85,7 @@ button:
     volume_down:
       name: "Z407 Volume Down"
       icon: mdi:volume-minus
-  
+
   # Bass controls
   - platform: z407_controller
     z407_controller_id: z407
@@ -95,7 +95,10 @@ button:
     bass_down:
       name: "Z407 Bass Down"
       icon: mdi:music-clef-bass
-  
+
+# Z407 Input Source Selector
+# ========================================
+=======
   # Playback controls
   - platform: z407_controller
     z407_controller_id: z407
@@ -109,7 +112,16 @@ button:
       name: "Z407 Previous Track"
       icon: mdi:skip-previous
 
+  # Bluetooth pairing control
+  - platform: z407_controller
+    z407_controller_id: z407
+    bluetooth_pair:
+      name: "Z407 Bluetooth Pair"
+      icon: mdi:bluetooth-connect
+
 # ========================================
+# Z407 Input Source Selector
+# ================================================================================
 # Z407 Input Source Selector
 # ========================================
 select:
@@ -138,4 +150,3 @@ sensor:
     rssi:
       name: "Z407 Signal Strength"
       update_interval: 60s
-
