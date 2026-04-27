@@ -101,6 +101,10 @@ external_components:
     components: [z407_controller]
 ```
 
+## Code Flow Documentation
+
+For a detailed understanding of how this component works, including code flow diagrams and state machines, see the [Code Flow Documentation](CODEFLOW.md).
+
 ## Configuration
 
 ### Basic Configuration
