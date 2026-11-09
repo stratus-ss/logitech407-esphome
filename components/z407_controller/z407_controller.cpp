@@ -23,14 +23,20 @@ void Z407Controller::setup() {
 }
 
 void Z407Controller::loop() {
-  // Check for connection timeout during handshake
-  if (this->state_ == Z407State::HANDSHAKING) {
-    uint32_t now = millis();
-    if (now - this->connection_start_time_ > this->connection_timeout_) {
-      ESP_LOGW(TAG, "Handshake timeout");
-      this->set_state_(Z407State::ERROR);
-    }
-  }
+  // Retry the handshake if it timed out. Not every Z407 firmware emits the
+  // final 0xD40003 "fully established" frame, so a handshake can also land in
+  // ERROR legitimately; retrying is what stops the controller sitting in ERROR
+  // until the ESP reboots (BLE stays ESTABLISHED and nothing else re-triggers it).
+  if (this->state_ != Z407State::HANDSHAKING && this->state_ != Z407State::ERROR)
+    return;
+
+  uint32_t now = millis();
+  if (now - this->connection_start_time_ <= this->connection_timeout_)
+    return;
+
+  ESP_LOGW(TAG, "Handshake timeout - retrying handshake");
+  this->connection_start_time_ = now;
+  this->start_handshake_();
 }
 
 void Z407Controller::dump_config() {
@@ -204,6 +210,10 @@ void Z407Controller::handle_handshake_response_(const std::vector<uint8_t> &data
   else if (data[0] == 0xD4 && data[1] == 0x00 && data[2] == 0x01) {
     ESP_LOGI(TAG, "Handshake step 2 complete");
     this->handshake_step2_complete_ = true;
+    // This is the last frame most Z407 firmware sends - treat it as fully
+    // connected. The spec also lists a follow-up 0xD40003, but it is not
+    // emitted in practice; waiting for it left the controller stuck in Error.
+    this->set_state_(Z407State::CONNECTED);
   }
   // Check for 0xD4 0x00 0x03 (connection established)
   else if (data[0] == 0xD4 && data[1] == 0x00 && data[2] == 0x03) {
