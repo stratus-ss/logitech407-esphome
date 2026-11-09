@@ -216,10 +216,9 @@ automation:
 
 **Solution:**
 
-1. Check binary sensor shows "Connected"
-2. Wait a few seconds after connection
-3. Check logs for handshake completion
-4. Try power cycling both devices
+1. Check the binary sensor shows "Connected" in Home Assistant. If it stays `unknown`, the handshake never finished — power cycling is **not** the fix, read the entry below.
+2. Check the ESP32 log for `State changed: Handshaking -> Connected`. If you instead see `Handshake timeout - retrying handshake`, the speaker is not sending the optional trailing `0xD40003` frame. That is handled since commit `e9b0464` — make sure the firmware was **built** after that commit (`external_components` is resolved at build time, so reflashing alone may not be enough).
+3. Only if the handshake times out with `Service not found` / `BLE connection failed` is this a real BLE problem — then check MAC address and range.
 
 ### Problem: Keeps disconnecting
 

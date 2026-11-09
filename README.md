@@ -252,11 +252,10 @@ text_sensor:
 3. Send `0x8405` (Pairing Initiate)
 4. Wait for `0xD40501` response
 5. Send `0x8400` (Pairing Acknowledge)
-6. Wait for `0xD40001` response (optional - may be skipped)
-7. Wait for `0xD40003` (Connected)
-8. Ready for commands
+6. Wait for `0xD40001` response — **this is the last frame required; the controller enters `CONNECTED` here**
+7. Ready for commands
 
-**Note:** The Z407 may skip step 6 and send `0xD40003` directly after `0x8400`. The component handles both sequences.
+**Note:** the protocol also documents a trailing `0xD40003` ("connected") frame after `0xD40001`. **Not every Z407 emits it**, and units that don't will never become ready if the code waits for it — see the troubleshooting entry below and commit `e9b0464`. `0xD40003` is still accepted if it does arrive, but it is not required and it no longer drives the state transition. A unit that skips `0xD40001` and jumps straight to `0xD40003` is also handled.
 
 ### Command Reference
 
@@ -280,11 +279,11 @@ text_sensor:
 
 ### Response Codes
 
-| Response             | Hex Code   | Meaning               |
-| -------------------- | ---------- | --------------------- |
-| Initiate Response    | `0xD40501` | Handshake step 1 OK   |
-| Acknowledge Response | `0xD40001` | Handshake step 2 OK   |
-| Connected            | `0xD40003` | Handshake complete    |
+| Response             | Hex Code   | Meaning                                    |
+| -------------------- | ---------- | ------------------------------------------ |
+| Initiate Response    | `0xD40501` | Handshake step 1 OK                        |
+| Acknowledge Response | `0xD40001` | Handshake step 2 OK — connection is ready  |
+| Connected            | `0xD40003` | Optional "fully established"; may not arrive |
 | Command Confirmation | `0xC0XX`   | Command received      |
 | Status Update        | `0xCF04`   | Switched to Bluetooth |
 | Status Update        | `0xCF05`   | Switched to AUX       |
@@ -338,21 +337,17 @@ script:
 
 ### Commands Not Working ("not ready" errors)
 
-**Symptoms:** Logs show `Cannot send command - not ready`
+**Symptoms:** Logs show `Cannot send command - not ready (state=Error, ...)` or `Z407 not ready - cannot change input`, every button press does nothing, and the connection binary sensor / input select stay `unknown` in Home Assistant even though the ESPHome node itself is online.
 
-**Solution:**
-1. Check ESP32 logs for handshake completion:
-   ```
-   [I][z407_controller:123] Handshake complete - connection established!
-   ```
-2. Ensure the physical Z407 remote is unpaired/disconnected
-3. Verify only one device is connected to the Z407 at a time
-4. Try power cycling both the Z407 and ESP32
-5. Enable debug logging to see detailed handshake sequence:
-   ```yaml
-   logger:
-     level: DEBUG
-   ```
+**Cause:** the handshake did not reach `CONNECTED`. `can_send_command_()` requires that state, so all commands are refused. Two things to check in the ESP32 log (the device must have `logger: logs: z407_controller: DEBUG`):
+
+1. **`Handshake step 2 complete` then `Handshake timeout - retrying handshake`.** The speaker answered `0xD40001` but never sent the trailing `0xD40003`. This was a real bug fixed in `e9b0464` (2026-11-09): the controller used to wait for `0xD40003` before entering `CONNECTED`, which left it stuck in `ERROR` after a 30 s timeout, and because the BLE link stays `ESTABLISHED` nothing re-triggered the handshake, so it needed a reboot to recover. If you see this, rebuild from a commit at or after `e9b0464` — note that `external_components: source: github://...` is resolved at **build** time, so an already-flashed device keeps the old firmware until it is rebuilt.
+
+2. **`BLE connection failed` / `Service not found` / `Response characteristic not found`.** Genuine BLE-level problem — see the connection sections below.
+
+**How to confirm you are fixed:** the log shows `State changed: Handshaking -> Connected` followed by `binary_sensor: 'Z407 Connected' >> ON`, and a volume press logs `Sending command: 0x8002` / `Write command 80 02 to handle 0xXXXX`.
+
+**Note:** the ESPHome node stays `online` in Home Assistant throughout this failure — only the Z407 sub-entities are affected, so "the device is online" is not evidence that the controller works.
 
 ### BLE Connection Failures
 
@@ -426,11 +421,30 @@ This project is not affiliated, associated, authorized, endorsed by, or in any w
 
 ## Changelog
 
+### 2026-11-09 — handshake completes on `0xD40001`
+
+**Fixed:** the controller could never reach `CONNECTED` on a Z407 that does not emit the
+trailing `0xD40003` frame, so every command was refused with `not ready (state=Error)` and
+the state latched until the ESP32 was rebooted (the BLE link stays `ESTABLISHED` in that
+state, so no event re-triggers the handshake).
+
+- `handle_handshake_response_()` now enters `CONNECTED` on `0xD40001`, matching
+  `z407_interactive.py` and the protocol note that the connection is established after this
+  exchange. `0xD40003` is still accepted if a unit does send it.
+- `loop()` now retries the handshake on timeout instead of latching `ERROR`, so a missed
+  handshake self-heals without a reboot.
+- README/QUICK_START/CODEFLOW corrected — the previous docs described `0xD40001` as the
+  optional frame and `0xD40003` as required, which is the inverse of the behaviour on units
+  that skip it.
+
+Verified on ESPHome 2026.10.2 against real Z407 hardware: `State changed: Handshaking ->
+Connected`, `Z407 Connected = ON`, and `80 02`/`80 03` written on volume up/down.
+
 **Known Issues:**
-- RSSI sensor temporarily disabled pending ESPHome BLE API updates
+- RSSI sensor temporarily disabled pending ESPHome BLE API updates (`update_rssi_()` is a stub, so `sensor.*_z407_signal_strength` stays `unknown`)
 
 **Testing:**
-- Verified compilation with ESPHome 2025.11.x
+- Verified compilation with ESPHome 2026.10.2
 - Tested handshake sequence with real Z407 hardware
 - Validated command execution and state tracking
 
