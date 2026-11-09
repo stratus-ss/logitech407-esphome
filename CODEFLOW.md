@@ -265,13 +265,13 @@ sequenceDiagram
     LOG->>LOG: "Sending acknowledge (0x8400)"
     
     Z407-->>ESP: Notify 0xD40001 (Acknowledge Response)
-    Note over ESP: handshake_step2_complete_ = true
+    Note over ESP: handshake_step2_complete_ = true<br/>set_state_(CONNECTED)
     LOG->>LOG: "Handshake step 2 complete"
     
-    Note over Z407: Optional step may be skipped
-    Z407-->>ESP: Notify 0xD40003 (Connected)
-    Note over ESP: set_state_(CONNECTED)
-    LOG->>LOG: "Handshake complete!"
+    Note over Z407: Optional final frame - NOT sent by every unit.<br/>The controller is already CONNECTED at this point.
+    Z407-->>ESP: Notify 0xD40003 (Connected) - may never arrive
+    Note over ESP: already CONNECTED, nothing to do
+    LOG->>LOG: "Handshake complete - connection established!"
     
     Note over ESP,Z407: CONNECTED State - Ready for commands
 ```
@@ -293,6 +293,7 @@ flowchart TD
     
     CHECK2 -->|Yes| LOG2["Log: Step 2 complete"]
     CHECK2 -->|Yes| SET_HS2[handshake_step2_complete_ = true]
+    SET_HS2 --> SET_CONN2["set_state_(CONNECTED)"]
     
     CHECK2 -->|No| CHECK3{data == 0xD40003?}
     
@@ -764,20 +765,20 @@ flowchart TD
 
 ### Timeout Handling During Handshake
 
-The `loop()` function monitors handshake timeout:
+The `loop()` function monitors handshake timeout and re-arms the handshake instead of latching `ERROR`. A latched `ERROR` is unrecoverable in practice: the BLE link stays `ESTABLISHED`, so no new `ESP_GATTC_SEARCH_CMPL_EVT` fires and nothing else restarts the sequence.
 
 ```mermaid
 flowchart TD
     LOOP["loop() called<br/>every iteration"]
-    LOOP --> CHECK{hs_state == HANDSHAKING?}
+    LOOP --> CHECK{state == HANDSHAKING<br/>or ERROR?}
     
     CHECK -->|No| EXIT[Return]
     CHECK -->|Yes| CHECK_TIME{"now - connection_start_time > connection_timeout?"}
     
     CHECK_TIME -->|No| EXIT
     CHECK_TIME -->|Yes| TIMEOUT[Handle timeout]
-    TIMEOUT --> LOG_W["Log: Handshake timeout"]
-    TIMEOUT --> SET_ERR["set_state_(ERROR)"]
+    TIMEOUT --> LOG_W["Log: Handshake timeout - retrying handshake"]
+    TIMEOUT --> RESET_T["connection_start_time_ = now"] --> RESTART["start_handshake_()"]
     
 ```
 
